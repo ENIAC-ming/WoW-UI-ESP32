@@ -38,7 +38,7 @@
 */
 /************************************* 屏幕驱动 *************************************/
 
-//分辨率128*64，硬件I2C接口
+//分辨率128*-1-2-8- 64，硬件SPI接口
 
 #include <U8g2lib.h>
 #include <SPI.h>
@@ -46,8 +46,11 @@
 #define   SCL   22
 #define   SDA   21
 #define   RES   U8X8_PIN_NONE
+#define   DC    21
+#define   CS    22
 
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, SCL, SDA);  
+//U8G2_SH1107_SEEED_128X128_F_4W_HW_SPI u8g2(U8G2_R0, CS, DC, RES);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* clock=*/ 22, /* data=*/ 21);  
 
 /************************************* 定义页面 *************************************/
 
@@ -353,25 +356,111 @@ void eeprom_init()
 
 /************************************* 旋钮相关 *************************************/
 
+/*
+//旋钮引脚
+#define   AIO   4
+#define   BIO   5
+#define   SW    18
+
 //按键ID
 #define   BTN_ID_CC           0 
 #define   BTN_ID_CW           1 
 #define   BTN_ID_SP           2 
 #define   BTN_ID_LP           3 
 
-#define BTN0 4
-#define BTN1 5
-#define BTN2 18
-#define BTN3 19
+//按键变量
+struct
+{
+  uint8_t   id;
+  bool      flag;
+  bool      pressed;
+  bool      CW_1;
+  bool      CW_2;
+  bool      val;
+  bool      val_last;  
+  bool      alv;  
+  bool      blv;
+  long      count;
+} volatile btn;
+
+
+void knob_inter() 
+{
+  btn.alv = digitalRead(AIO);
+  btn.blv = digitalRead(BIO);
+  if (!btn.flag && btn.alv == LOW) 
+  {
+    btn.CW_1 = btn.blv;
+    btn.flag = true;
+  }
+  if (btn.flag && btn.alv) 
+  {
+    btn.CW_2 = !btn.blv;
+    if (btn.CW_1 && btn.CW_2)
+     {
+      btn.id = ui.param[KNOB_DIR];
+      btn.pressed = true;
+    }
+    if (btn.CW_1 == false && btn.CW_2 == false) 
+    {
+      btn.id = !ui.param[KNOB_DIR];
+      btn.pressed = true;
+    }
+    btn.flag = false;
+  }
+}
+
+void btn_scan() 
+{
+  btn.val = digitalRead(SW);
+  if (btn.val != btn.val_last)
+  {
+    btn.val_last = btn.val;
+    delay(ui.param[BTN_SPT]);
+    btn.val = digitalRead(SW);
+    if (btn.val == LOW)
+    {
+      btn.pressed = true;
+      btn.count = 0;
+      while (!digitalRead(SW))
+      {
+        btn.count++;
+        delay(1);
+      }
+      if (btn.count < ui.param[BTN_LPT])  btn.id = BTN_ID_SP;
+      else  btn.id = BTN_ID_LP;
+    }
+  }
+}
+
+void btn_init() 
+{
+  pinMode(AIO, INPUT);
+  pinMode(BIO, INPUT);
+  pinMode(SW, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(AIO), knob_inter, CHANGE);
+}
+*/
+
+//按键ID
+#define   BTN_ID_CC           0 
+#define   BTN_ID_CW           1 
+#define   BTN_ID_SP           2 
+#define   BTN_ID_LP           3 
+
+#define BTN0 12
+#define BTN1 13
+#define BTN2 14
 
 //按键变量
 typedef struct
 {
   bool val;
-  bool last_val;  
+  bool last_val; 
+  long count;
 }KEY;
 
-KEY key[4]={false};
+KEY key[3]={false};
 
 //按键信息
 struct
@@ -379,6 +468,7 @@ struct
 uint8_t id;
 bool pressed;
 } volatile btn;
+;
 
 bool get_key_val(uint8_t ch)
 {
@@ -393,13 +483,12 @@ bool get_key_val(uint8_t ch)
     case 2:
     return digitalRead(BTN2);
     break;
-    case 3:
-    return digitalRead(BTN3);
-    break;
     default:
     break;
   }
 }
+
+long btncount = 0;
 
 void btn_scan()
 {
@@ -409,9 +498,25 @@ void btn_scan()
       if(key[i].last_val!=key[i].val)//发生改变
       {
         key[i].last_val=key[i].val;//更新状态
-        if(key[i].val==LOW)
+        //delay(ui.param[BTN_SPT]);
+        //key[i].val = get_key_val(i);
+        if(key[i].val==HIGH)
         {
-          btn.id=i;
+          if(i == 2)
+          {
+            key[i].count = 0;
+            while (digitalRead(BTN2))
+            {
+              key[i].count++;
+              delay(1);
+            }
+            if (key[i].count < ui.param[BTN_LPT])  btn.id = BTN_ID_SP;
+            else  btn.id = BTN_ID_LP;
+          }
+          else
+          {
+            btn.id=i;
+          }
           btn.pressed=true;
         }
       }
@@ -420,15 +525,13 @@ void btn_scan()
 
 void btn_init()
 {
-  pinMode(BTN0, INPUT_PULLUP);
-  pinMode(BTN1, INPUT_PULLUP);
-  pinMode(BTN2, INPUT_PULLUP);
-  pinMode(BTN3, INPUT_PULLUP);
+  pinMode(BTN0, INPUT_PULLDOWN);
+  pinMode(BTN1, INPUT_PULLDOWN);
+  pinMode(BTN2, INPUT_PULLDOWN);
   for(uint8_t i=0;i<(sizeof(key)/sizeof(KEY));++i)
   {
     key[i].val=key[i].last_val=get_key_val(i);
   }
-  //attachInterrupt(digitalPinToInterrupt(BTN0), btn_scan, CHANGE);
 }
 
 
@@ -502,7 +605,7 @@ void device_init()
   ui.param[BOX_X_OS]  = 10;
   ui.param[BOX_Y_OS]  = 10;
   ui.param[WIN_Y_OS]  = 30;
-  ui.param[LIST_ANI]  = 200;
+  ui.param[LIST_ANI]  = 50;
   ui.param[WIN_ANI]   = 50;
   ui.param[FADE_ANI]  = 30;
   ui.param[BTN_SPT]   = 50;
@@ -850,25 +953,16 @@ void sleep_proc()
   if (btn.pressed) 
   { 
     btn.pressed = false; 
-    switch (btn.id) 
-    {
-      case BTN_ID_CW: break;  //顺时针旋转执行的函数
-      case BTN_ID_CC: break;  //逆时针旋转执行的函数
-      case BTN_ID_SP: break;  //短按执行的函数
-      case BTN_ID_LP: 
-      
-        ui.index = M_MAIN;
-        ui.state = S_LAYER_IN;
+      ui.index = M_MAIN;
+      ui.state = S_LAYER_IN;
 
-        list.box_y = 0;
-        list.box_w = 0;
-        list.box_w_trg = 0;
-        list.box_h = 0;
-        list.box_h_trg = 0;
-        list.bar_h = 0;
-        u8g2.setPowerSave(0);
-        break;
-    }
+      list.box_y = 0;
+      list.box_w = 0;
+      list.box_w_trg = 0;
+      list.box_h = 0;
+      list.box_h_trg = 0;
+      list.bar_h = 0;
+      u8g2.setPowerSave(0);
   }
 }
 
