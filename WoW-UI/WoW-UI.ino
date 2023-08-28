@@ -38,18 +38,16 @@
 */
 /************************************* 屏幕驱动 *************************************/
 
-//分辨率128*128，硬件SPI接口
+//分辨率128*64，硬件I2C接口
 
 #include <U8g2lib.h>
 #include <SPI.h>
 
-#define   SCL   PA5
-#define   SDA   PA7
+#define   SCL   22
+#define   SDA   21
 #define   RES   U8X8_PIN_NONE
-#define   DC    PB6
-#define   CS    PB7
 
-U8G2_SH1107_SEEED_128X128_F_4W_HW_SPI u8g2(U8G2_R0, CS, DC, RES);
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, SCL, SDA);  
 
 /************************************* 定义页面 *************************************/
 
@@ -143,7 +141,7 @@ M_SELECT about_menu[]
 /************************************* 页面变量 *************************************/
 
 //UI变量
-#define   UI_DISP_H           128
+#define   UI_DISP_H           64
 #define   UI_DISP_W           128
 #define   UI_DEPTH            10   
 #define   UI_PARAM            11  
@@ -172,7 +170,7 @@ struct
   uint8_t   layer;
   uint8_t   fade = 1;
 
-  uint8_t   index = M_SLEEP;
+  uint8_t   index = M_MAIN;
   uint8_t   state = S_MENU;
 
   uint8_t   select[UI_DEPTH];
@@ -355,88 +353,84 @@ void eeprom_init()
 
 /************************************* 旋钮相关 *************************************/
 
-//旋钮引脚
-#define   AIO   PB12
-#define   BIO   PB13
-#define   SW    PB14
-
 //按键ID
 #define   BTN_ID_CC           0 
 #define   BTN_ID_CW           1 
 #define   BTN_ID_SP           2 
 #define   BTN_ID_LP           3 
 
+#define BTN0 4
+#define BTN1 5
+#define BTN2 18
+#define BTN3 19
+
 //按键变量
+typedef struct
+{
+  bool val;
+  bool last_val;  
+}KEY;
+
+KEY key[4]={false};
+
+//按键信息
 struct
 {
-  uint8_t   id;
-  bool      flag;
-  bool      pressed;
-  bool      CW_1;
-  bool      CW_2;
-  bool      val;
-  bool      val_last;  
-  bool      alv;  
-  bool      blv;
-  long      count;
+uint8_t id;
+bool pressed;
 } volatile btn;
 
-void knob_inter() 
+bool get_key_val(uint8_t ch)
 {
-  btn.alv = digitalRead(AIO);
-  btn.blv = digitalRead(BIO);
-  if (!btn.flag && btn.alv == LOW) 
+  switch (ch)
   {
-    btn.CW_1 = btn.blv;
-    btn.flag = true;
-  }
-  if (btn.flag && btn.alv) 
-  {
-    btn.CW_2 = !btn.blv;
-    if (btn.CW_1 && btn.CW_2)
-     {
-      btn.id = ui.param[KNOB_DIR];
-      btn.pressed = true;
-    }
-    if (btn.CW_1 == false && btn.CW_2 == false) 
-    {
-      btn.id = !ui.param[KNOB_DIR];
-      btn.pressed = true;
-    }
-    btn.flag = false;
+    case 0:
+    return digitalRead(BTN0);
+    break;
+    case 1:
+    return digitalRead(BTN1);
+    break;
+    case 2:
+    return digitalRead(BTN2);
+    break;
+    case 3:
+    return digitalRead(BTN3);
+    break;
+    default:
+    break;
   }
 }
 
-void btn_scan() 
+void btn_scan()
 {
-  btn.val = digitalRead(SW);
-  if (btn.val != btn.val_last)
-  {
-    btn.val_last = btn.val;
-    delay(ui.param[BTN_SPT]);
-    btn.val = digitalRead(SW);
-    if (btn.val == LOW)
+    for(uint8_t i=0;i<(sizeof(key)/sizeof(KEY));++i)
     {
-      btn.pressed = true;
-      btn.count = 0;
-      while (!digitalRead(SW))
+      key[i].val=get_key_val(i);//获取键值
+      if(key[i].last_val!=key[i].val)//发生改变
       {
-        btn.count++;
-        delay(1);
+        key[i].last_val=key[i].val;//更新状态
+        if(key[i].val==LOW)
+        {
+          btn.id=i;
+          btn.pressed=true;
+        }
       }
-      if (btn.count < ui.param[BTN_LPT])  btn.id = BTN_ID_SP;
-      else  btn.id = BTN_ID_LP;
     }
-  }
 }
 
-void btn_init() 
+void btn_init()
 {
-  pinMode(AIO, INPUT);
-  pinMode(BIO, INPUT);
-  pinMode(SW, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(AIO), knob_inter, CHANGE);
+  pinMode(BTN0, INPUT_PULLUP);
+  pinMode(BTN1, INPUT_PULLUP);
+  pinMode(BTN2, INPUT_PULLUP);
+  pinMode(BTN3, INPUT_PULLUP);
+  for(uint8_t i=0;i<(sizeof(key)/sizeof(KEY));++i)
+  {
+    key[i].val=key[i].last_val=get_key_val(i);
+  }
+  //attachInterrupt(digitalPinToInterrupt(BTN0), btn_scan, CHANGE);
 }
+
 
 /************************************ 初始化函数 ***********************************/
 
@@ -995,7 +989,7 @@ void ui_proc()
 //OLED初始化函数
 void oled_init()
 {
-  u8g2.setBusClock(10000000);
+  u8g2.setBusClock(800000);
   u8g2.begin();
   u8g2.enableUTF8Print();
   u8g2.setContrast(ui.param[DISP_BRI]);
@@ -1016,5 +1010,3 @@ void loop()
   btn_scan();
   ui_proc();
 }
-
-
