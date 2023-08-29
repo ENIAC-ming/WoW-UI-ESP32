@@ -356,92 +356,6 @@ void eeprom_init()
 
 /************************************* 旋钮相关 *************************************/
 
-/*
-//旋钮引脚
-#define   AIO   4
-#define   BIO   5
-#define   SW    18
-
-//按键ID
-#define   BTN_ID_CC           0 
-#define   BTN_ID_CW           1 
-#define   BTN_ID_SP           2 
-#define   BTN_ID_LP           3 
-
-//按键变量
-struct
-{
-  uint8_t   id;
-  bool      flag;
-  bool      pressed;
-  bool      CW_1;
-  bool      CW_2;
-  bool      val;
-  bool      val_last;  
-  bool      alv;  
-  bool      blv;
-  long      count;
-} volatile btn;
-
-
-void knob_inter() 
-{
-  btn.alv = digitalRead(AIO);
-  btn.blv = digitalRead(BIO);
-  if (!btn.flag && btn.alv == LOW) 
-  {
-    btn.CW_1 = btn.blv;
-    btn.flag = true;
-  }
-  if (btn.flag && btn.alv) 
-  {
-    btn.CW_2 = !btn.blv;
-    if (btn.CW_1 && btn.CW_2)
-     {
-      btn.id = ui.param[KNOB_DIR];
-      btn.pressed = true;
-    }
-    if (btn.CW_1 == false && btn.CW_2 == false) 
-    {
-      btn.id = !ui.param[KNOB_DIR];
-      btn.pressed = true;
-    }
-    btn.flag = false;
-  }
-}
-
-void btn_scan() 
-{
-  btn.val = digitalRead(SW);
-  if (btn.val != btn.val_last)
-  {
-    btn.val_last = btn.val;
-    delay(ui.param[BTN_SPT]);
-    btn.val = digitalRead(SW);
-    if (btn.val == LOW)
-    {
-      btn.pressed = true;
-      btn.count = 0;
-      while (!digitalRead(SW))
-      {
-        btn.count++;
-        delay(1);
-      }
-      if (btn.count < ui.param[BTN_LPT])  btn.id = BTN_ID_SP;
-      else  btn.id = BTN_ID_LP;
-    }
-  }
-}
-
-void btn_init() 
-{
-  pinMode(AIO, INPUT);
-  pinMode(BIO, INPUT);
-  pinMode(SW, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(AIO), knob_inter, CHANGE);
-}
-*/
-
 //按键ID
 #define   BTN_ID_CC           0 
 #define   BTN_ID_CW           1 
@@ -458,6 +372,8 @@ typedef struct
   bool val;
   bool last_val; 
   long count;
+  unsigned long chg_time;
+  bool operated;
 }KEY;
 
 KEY key[3]={false};
@@ -488,39 +404,64 @@ bool get_key_val(uint8_t ch)
   }
 }
 
-long btncount = 0;
-
-void btn_scan()
-{
-    for(uint8_t i=0;i<(sizeof(key)/sizeof(KEY));++i)
+void btn_scan() {
+  for (uint8_t i = 0; i < (sizeof(key) / sizeof(KEY)); ++i) {
+    key[i].val = get_key_val(i);  //获取键值
+    if (key[i].last_val != key[i].val)  //发生改变
     {
-      key[i].val=get_key_val(i);//获取键值
-      if(key[i].last_val!=key[i].val)//发生改变
-      {
-        key[i].last_val=key[i].val;//更新状态
-        //delay(ui.param[BTN_SPT]);
-        //key[i].val = get_key_val(i);
-        if(key[i].val==HIGH)
-        {
-          if(i == 2)
-          {
-            key[i].count = 0;
-            while (digitalRead(BTN2))
-            {
-              key[i].count++;
-              delay(1);
+      key[i].last_val = key[i].val;  //更新状态
+      //delay(ui.param[BTN_SPT]);
+      //key[i].val = get_key_val(i);
+      if (key[i].val == HIGH) {
+        key[i].chg_time = millis();
+        switch (i) {
+          case 0:
+            btn.id = BTN_ID_CC;
+            btn.pressed = 1;
+            break;
+          case 1:
+            btn.id = BTN_ID_CW;
+            btn.pressed = 1;
+            break;
+          default:
+            break;
+        }
+      }
+      if (key[i].val == LOW) {
+        switch (i) {
+          case 2:
+            if (key[i].operated == 1)
+              key[i].operated = 0;
+            else {
+              btn.id = BTN_ID_SP;
+              btn.pressed = 1;
             }
-            if (key[i].count < ui.param[BTN_LPT])  btn.id = BTN_ID_SP;
-            else  btn.id = BTN_ID_LP;
-          }
-          else
-          {
-            btn.id=i;
-          }
-          btn.pressed=true;
+            break;
+          default:
+            break;
         }
       }
     }
+    if (key[i].val == HIGH && millis() - key[i].chg_time > ui.param[BTN_LPT] && key[i].operated == 0) {
+      switch (i) {
+        case 0:
+          btn.id = BTN_ID_CC;
+          btn.pressed = 1;
+          break;
+        case 1:
+          btn.id = BTN_ID_CW;
+          btn.pressed = 1;
+          break;
+        case 2:
+          btn.id = BTN_ID_LP;
+          key[i].operated = 1;
+          btn.pressed = 1;
+          break;
+        default:
+          break;
+      }
+    }
+  }
 }
 
 void btn_init()
